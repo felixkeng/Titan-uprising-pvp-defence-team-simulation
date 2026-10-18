@@ -1,6 +1,9 @@
 import random
-import copy
 import itertools
+import csv
+import time
+import os
+from collections import Counter
 from dragon_skills import Dragon, DEFENSE_POOL, get_offense_team, cast_skill, _mitigate
 
 ELEMENTS = ["Red", "Green", "Blue", "Yellow", "Purple"]
@@ -17,6 +20,7 @@ GEM_DAMAGE_RATIO = 1.0 / 3.0
 COMBO_BONUS = 0.1
 CRIT_MULT = 2.5
 STRONG_HIT_MULT = 1.5
+DEFENSE_AUTO_MULT = 1.5 
 
 class Board7x5:
     def __init__(self):
@@ -114,56 +118,94 @@ class Board7x5:
             runs = self.find_matches()
         return events
 
+class SlotWrapper:
+    def __init__(self, dragon, original_number):
+        self.dragon = dragon
+        self.original_number = original_number
 
 class PositionalTeamManager:
     def __init__(self, roster):
-        self.active_slots = roster[:3] # [Top, Left, Right]
-        self.bench = roster[3:]
+        self.active_slots = [
+            SlotWrapper(roster[0], 1),
+            SlotWrapper(roster[1], 2),
+            SlotWrapper(roster[2], 3)
+        ]
+        self.bench = []
+        for i in range(3, 10):
+            if i < len(roster) and roster[i] is not None:
+                self.bench.append(SlotWrapper(roster[i], i+1))
+            else:
+                self.bench.append(None)
 
     def get_column_zones(self):
         return {1: [1], 2: [1], 3: [0], 4: [0], 5: [2], 6: [2], 7: [2]}
 
     def update_roster(self):
         for i in range(len(self.active_slots)):
-            if self.active_slots[i] and not self.active_slots[i].is_alive():
+            if self.active_slots[i] and not self.active_slots[i].dragon.is_alive():
+                while self.bench and (self.bench[0] is None or not self.bench[0].dragon.is_alive()):
+                    self.bench.pop(0)
                 self.active_slots[i] = self.bench.pop(0) if self.bench else None
 
     def get_alive_active(self):
-        return [d for d in self.active_slots if d is not None and d.is_alive()]
+        return [slot for slot in self.active_slots if slot is not None and slot.dragon.is_alive()]
+
+    def get_cast_order(self):
+        alive_slots = self.get_alive_active() + [s for s in self.bench if s is not None and s.dragon.is_alive()]
+        alive_slots.sort(key=lambda s: s.original_number)
+        return [slot.dragon for slot in alive_slots]
 
     def is_eliminated(self):
-        return not (any(d is not None and d.is_alive() for d in self.active_slots) or len(self.bench) > 0)
+        return not (any(s is not None and s.dragon.is_alive() for s in self.active_slots) or 
+                    any(s is not None and s.dragon.is_alive() for s in self.bench))
 
+    def get_alive_dragons(self):
+        return [s.dragon for s in self.get_alive_active()]
+
+class SkillManagerWrapper:
+    def __init__(self, team_mgr):
+        self.team_mgr = team_mgr
+    def get_alive_active(self):
+        return self.team_mgr.get_alive_dragons()
 
 class PositionalBattleSimulator:
-    def __init__(self, offense_roster, defense_roster):
+    def __init__(self, offense_roster, defense_roster, board_pool):
         self.offense_mgr = PositionalTeamManager(offense_roster)
         self.defense_mgr = PositionalTeamManager(defense_roster)
-        self.off_board = Board7x5()
-        self.def_board = Board7x5()
+        self.off_skill_mgr = SkillManagerWrapper(self.offense_mgr)
+        self.def_skill_mgr = SkillManagerWrapper(self.defense_mgr)
+        
+        self.off_board = board_pool.pop()
+        self.def_board = board_pool.pop()
+        self.board_pool = board_pool
 
-    def _best_attacker(self, color, active):
-        c = [d for d in active if d.element == color and d.is_alive()]
+    def _best_attacker(self, color, active_slots):
+        c = [s.dragon for s in active_slots if s.dragon.element == color and s.dragon.is_alive()]
         return max(c, key=lambda d: d.atk) if c else None
 
     def _resolve_side(self, board, attacker_mgr, defender_mgr):
         active_att = attacker_mgr.get_alive_active()
         if not active_att: return
 
-        events = board.execute_move([d.element for d in active_att])
+        active_colors = [s.dragon.element for s in active_att]
+        events = board.execute_move(active_colors)
+        
         zone_map = defender_mgr.get_column_zones()
         combo = 0
         
         for color, col, mult in events:
-            for d in active_att:
-                if d.element == color and d.is_alive(): d.gain_spirit(1)
+            for slot in active_att:
+                if slot.dragon.element == color and slot.dragon.is_alive(): 
+                    slot.dragon.gain_spirit(1)
             
             slots = zone_map.get(col, [])
             valid = [defender_mgr.active_slots[s] for s in slots
-                     if defender_mgr.active_slots[s] and defender_mgr.active_slots[s].is_alive()]
+                     if defender_mgr.active_slots[s] and defender_mgr.active_slots[s].dragon.is_alive()]
             if not valid: continue
                 
-            target = random.choice(valid)
+            target_slot = random.choice(valid)
+            target = target_slot.dragon
+            
             attacker = self._best_attacker(color, active_att)
             
             if attacker is None: dmg = 1
@@ -184,97 +226,211 @@ class PositionalBattleSimulator:
         self._resolve_side(self.off_board, self.offense_mgr, self.defense_mgr)
         self._resolve_side(self.def_board, self.defense_mgr, self.offense_mgr)
 
-        for d in self.offense_mgr.get_alive_active(): d.gain_spirit(1)
-        for d in self.defense_mgr.get_alive_active(): d.gain_spirit(1)
+        for slot in self.offense_mgr.get_alive_active(): slot.dragon.gain_spirit(1)
+        for slot in self.defense_mgr.get_alive_active(): slot.dragon.gain_spirit(1)
 
-        for d in list(self.offense_mgr.get_alive_active()):
+        for d in self.offense_mgr.get_cast_order():
             if d.is_alive() and d.current_spirit >= d.spirit_req:
-                cast_skill(d, self.offense_mgr, self.defense_mgr)
+                cast_skill(d, self.off_skill_mgr, self.def_skill_mgr)
 
-        for d in list(self.defense_mgr.get_alive_active()):
+        for d in self.defense_mgr.get_cast_order():
             if d.is_alive() and d.current_spirit >= d.spirit_req:
-                cast_skill(d, self.defense_mgr, self.offense_mgr)
+                cast_skill(d, self.def_skill_mgr, self.off_skill_mgr)
 
-        for d in self.offense_mgr.get_alive_active() + self.defense_mgr.get_alive_active():
-            if d.is_alive(): d.process_turn()
+        for slot in self.offense_mgr.get_alive_active() + self.defense_mgr.get_alive_active():
+            if slot.dragon.is_alive(): slot.dragon.process_turn()
 
     def simulate(self):
+        self.off_board.reset_board()
+        self.def_board.reset_board()
+        
         turns = 0
-        while turns < 120:
+        while turns < 40:
             self.offense_mgr.update_roster()
             self.defense_mgr.update_roster()
-            if self.defense_mgr.is_eliminated(): return "Offense Win"
-            if self.offense_mgr.is_eliminated(): return "Defense Win"
+            
+            if self.defense_mgr.is_eliminated(): 
+                result = "Offense Win"
+                break
+            if self.offense_mgr.is_eliminated(): 
+                result = "Defense Win"
+                break
             
             self.run_turn()
             turns += 1
+        else:
+            off_hp = sum(s.dragon.current_hp for s in self.offense_mgr.get_alive_active())
+            def_hp = sum(s.dragon.current_hp for s in self.defense_mgr.get_alive_active())
+            result = "Offense Win" if off_hp > def_hp else "Defense Win"
             
-        off_alive = self.offense_mgr.get_alive_active()
-        def_alive = self.defense_mgr.get_alive_active()
-        off_score = len(off_alive) * 1000 + sum(d.current_hp for d in off_alive)
-        def_score = len(def_alive) * 1000 + sum(d.current_hp for d in def_alive)
-        return "Offense Win" if off_score > def_score else "Defense Win"
+        self.board_pool.append(self.off_board)
+        self.board_pool.append(self.def_board)
+        return result
 
-# ==========================================
-# 9P5 BRUTE-FORCE SEARCH (50 ITERATIONS)
-# ==========================================
+def run_battles_until_losses(seq, board_pool, max_losses=7):
+    wins = 0
+    losses = 0
+    base_offense = get_offense_team()
+    base_defense = [DEFENSE_POOL[n] for n in seq if n is not None]
+    
+    while losses < max_losses:
+        offense = [Dragon(d.name, d.element, d.atk, d.defense, d.max_hp, d.spirit_speed, d.skill_id) for d in base_offense]
+        defense = [Dragon(d.name, d.element, d.atk, d.defense, d.max_hp, d.spirit_speed, d.skill_id) for d in base_defense]
+        
+        sim = PositionalBattleSimulator(offense, defense, board_pool)
+        if sim.simulate() == "Defense Win":
+            wins += 1
+        else:
+            losses += 1
+            
+    return wins
 
-def find_top_defense_teams():
-    # Filtered list of only the 9 viable dragons you specified
-    viable_dragons = [
-        "Stormfly", "Murmurquil", "Sawmaw", "Toothless", "Shattermaster", 
-        "Meatlug", "Radiant Skyglow", "Harvest Stormfly", "Sunsail Windshear"
+def run_simulation():
+    core_5 = ["Stormfly", "Sawmaw", "Toothless", "Murmurquil", "Shattermaster"]
+    pool_14 = [
+        "Stormfly", "Sawmaw", "Toothless", "Murmurquil", "Shattermaster",
+        "Meatlug", "Sunsail Windshear", "Slick Nicker", "Infamous Flameout", 
+        "Seezering Seetle", "Harvest Stormfly", "Crom Lech", "Easter Barf & Belch",
+        "Freedom Hookfang"
     ]
     
-    # 9P5 = 15,120 permutations
-    all_perms = list(itertools.permutations(viable_dragons, 5))
-    total_perms = len(all_perms)
+    # ==========================================
+    # STAGE 1: 60 Frontline Permutations
+    # ==========================================
+    print("STAGE 1: Testing 60 Frontlines (Max 7 Losses)...")
+    frontlines = list(itertools.permutations(core_5, 3))
+    stage1_results = []
+    board_pool = [Board7x5() for _ in range(60)]
     
-    # 50 iterations gives a very accurate win rate
-    iterations_per_team = 50
-    
-    print(f"Testing {total_perms:,} teams ({iterations_per_team} battles each)...")
-    print(f"Total simulations: {total_perms * iterations_per_team:,}")
-    print("Running... This should take 2-4 minutes depending on your CPU.\n")
-    
-    results = []
-    
-    for idx, seq in enumerate(all_perms):
-        defense_wins = 0
+    start_time = time.time()
+    for idx, front in enumerate(frontlines):
+        team = list(front) + [None] * 7
+        wins = run_battles_until_losses(team, board_pool, max_losses=7)
+        stage1_results.append((wins, front))
         
-        for _ in range(iterations_per_team):
-            offense = get_offense_team()
-            defense = [copy.deepcopy(DEFENSE_POOL[n]) for n in seq]
-            sim = PositionalBattleSimulator(offense, defense)
-            if sim.simulate() == "Defense Win":
-                defense_wins += 1
+        elapsed = time.time() - start_time
+        print(f"[{elapsed:5.1f}s] {idx + 1:>2}/60 | {wins} wins | {front}")
+        
+    stage1_results.sort(key=lambda x: x[0], reverse=True)
+    
+    if len(stage1_results) > 15:
+        cutoff = stage1_results[14][0]
+        current_teams = [res for res in stage1_results if res[0] >= cutoff]
+    else:
+        current_teams = stage1_results
+        
+    print(f"\nSTAGE 1 COMPLETE. {len(current_teams)} Frontlines passed.")
+    
+    # ==========================================
+    # STAGE 2 A-G: Add one dragon at a time
+    # ==========================================
+    cutoffs = [30, 45, 60, 75, 90, 105]
+    
+    for stage_idx in range(7):
+        stage_letter = chr(65 + stage_idx) # A, B, C...
+        dragon_slot = stage_idx + 4 # Bench 1 is slot 4
+        
+        print(f"\nSTAGE 2{stage_letter}: Adding Dragon {dragon_slot} (Max 7 Losses)...")
+        
+        stage_results = []
+        board_pool = [Board7x5() for _ in range(60)]
+        
+        start_time = time.time()
+        
+        for idx, (_, team_so_far) in enumerate(current_teams):
+            available_dragons = [d for d in pool_14 if d not in team_so_far]
+            
+            for new_dragon in available_dragons:
+                new_team = list(team_so_far) + [new_dragon] + [None] * (6 - stage_idx)
+                wins = run_battles_until_losses(new_team, board_pool, max_losses=7)
+                stage_results.append((wins, tuple(new_team[:dragon_slot])))
                 
-        win_rate = (defense_wins / iterations_per_team) * 100
-        results.append((win_rate, seq))
+            if (idx + 1) % 10 == 0 or (idx + 1) == len(current_teams):
+                elapsed = time.time() - start_time
+                print(f"  [{elapsed:5.1f}s] Tested options for {idx+1}/{len(current_teams)} base teams...")
+                
+        stage_results.sort(key=lambda x: x[0], reverse=True)
         
-        # Progress tracker
-        if (idx + 1) % 2000 == 0:
-            print(f"Progress: {idx + 1:,} / {total_perms:,} teams tested...")
-        
-    # Sort by highest win rate
-    results.sort(key=lambda x: x[0], reverse=True)
+        # Apply cutoffs
+        if stage_idx < len(cutoffs):
+            target_cutoff = cutoffs[stage_idx]
+            if len(stage_results) > target_cutoff:
+                cutoff_val = stage_results[target_cutoff - 1][0]
+                current_teams = [res for res in stage_results if res[0] >= cutoff_val]
+            else:
+                current_teams = stage_results
+        else:
+            # For the last stage (2G), keep the Top 100 (including ties)
+            target_cutoff = 100
+            if len(stage_results) > target_cutoff:
+                cutoff_val = stage_results[target_cutoff - 1][0]
+                current_teams = [res for res in stage_results if res[0] >= cutoff_val]
+            else:
+                current_teams = stage_results
+                
+        print(f"  STAGE 2{stage_letter} COMPLETE. {len(current_teams)} teams passed.")
     
+    # ==========================================
+    # FINAL RESULTS (From Stage 2G)
+    # ==========================================
+    # current_teams is already the final Top 100+ from Stage 2G.
+    # We just need to pad any teams that didn't reach 10 dragons (shouldn't happen in 2G)
+    final_results = []
+    for wins, team in current_teams:
+        if len(team) < 10:
+            available = [d for d in pool_14 if d not in team]
+            random.shuffle(available)
+            team = tuple(list(team) + available[:10-len(team)])
+        final_results.append((wins, team))
+        
+    final_results.sort(key=lambda x: x[0], reverse=True)
+    
+    with open("all_win_rates.csv", "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["Wins", "Top", "Left", "Right", "Bench 1", "Bench 2", "Bench 3", "Bench 4", "Bench 5", "Bench 6", "Bench 7"])
+        for wins, team in final_results:
+            writer.writerow([wins] + list(team))
+    print(f"\nSaved all results to 'all_win_rates.csv'")
+
     print("\n" + "=" * 60)
-    print("TOP 5 DEFENSE TEAMS (Out of 15,120 permutations)")
+    print("FINAL TOP 10 DEFENSE TEAMS (By Wins)")
     print("=" * 60)
     
-    for rank, (win_rate, seq) in enumerate(results[:5], 1):
-        print(f"\n#{rank} - Defense Win Rate: {win_rate:.1f}%")
-        print(f"  [Top]    : {seq[0]}")
-        print(f"  [Left]   : {seq[1]}")
-        print(f"  [Right]  : {seq[2]}")
-        print(f"  [Bench 1]: {seq[3]}")
-        print(f"  [Bench 2]: {seq[4]}")
-        
-    print("\n" + "-" * 60)
-    worst_rate, worst_seq = results[-1]
-    print(f"WORST TEAM (Win Rate: {worst_rate:.1f}%)")
-    print(f"  {worst_seq}")
+    for rank, (wins, team) in enumerate(final_results[:10], 1):
+        print(f"\n#{rank} - {wins} Wins")
+        for i, name in enumerate(team, 1):
+            slot_name = ["Top", "Left", "Right", "Bench 1", "Bench 2", "Bench 3", "Bench 4", "Bench 5", "Bench 6", "Bench 7"][i-1]
+            print(f"  [{slot_name:<7}]: {name}")
+
+    if len(final_results) > 10:
+        print("\n" + "-" * 60)
+        print("RUNNER UPS (Ranks 11-100+)")
+        print("-" * 60)
+        for rank, (wins, team) in enumerate(final_results[10:100], 11):
+            print(f"#{rank:>2} - {wins} wins | {team}")
+            
+    print("\n" + "=" * 60)
+    print("TOP 100 DRAGON USAGE STATISTICS")
+    print("=" * 60)
+
+    top_100_final = [team for wins, team in final_results[:100]]
+    
+    def print_ranking(title, counter):
+        print(f"\n--- {title} ---")
+        for i, (dragon, count) in enumerate(counter.most_common(), 1):
+            if dragon:
+                print(f"  #{i:<2} {dragon:<20} : {count}")
+
+    all_dragons = [d for team in top_100_final for d in team if d]
+    print_ranking("MOST USED DRAGON (Overall)", Counter(all_dragons))
+
+    pos_names = ["TOP", "LEFT", "RIGHT", "BENCH 1", "BENCH 2", "BENCH 3", "BENCH 4", "BENCH 5", "BENCH 6", "BENCH 7"]
+    for i in range(10):
+        pos_dragons = [team[i] for team in top_100_final if len(team) > i]
+        print_ranking(f"MOST USED {pos_names[i]}", Counter(pos_dragons))
 
 if __name__ == "__main__":
-    find_top_defense_teams()
+    print("============================================================")
+    print("TITAN UPRISING PVP DEFENSE SIMULATOR")
+    print("============================================================")
+    run_simulation()

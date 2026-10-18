@@ -1,0 +1,112 @@
+============================================================
+TOP 100 DRAGON USAGE STATISTICS
+============================================================
+
+--- MOST USED DRAGON (Overall) ---
+  #1  Stormfly             : 100
+  #2  Toothless            : 100
+  #3  Sawmaw               : 100
+  #4  Crom Lech            : 87
+  #5  Freedom Hookfang     : 81
+  #6  Shattermaster        : 79
+  #7  Slick Nicker         : 77
+  #8  Sunsail Windshear    : 68
+  #9  Seezering Seetle     : 64
+  #10 Easter Barf & Belch  : 63
+  #11 Infamous Flameout    : 58
+  #12 Murmurquil           : 48
+  #13 Meatlug              : 42
+  #14 Harvest Stormfly     : 33
+
+--- MOST USED TOP ---
+  #1  Stormfly             : 42
+  #2  Sawmaw               : 30
+  #3  Toothless            : 25
+  #4  Shattermaster        : 3
+
+--- MOST USED LEFT ---
+  #1  Toothless            : 41
+  #2  Stormfly             : 34
+  #3  Sawmaw               : 25
+
+--- MOST USED RIGHT ---
+  #1  Sawmaw               : 45
+  #2  Toothless            : 31
+  #3  Stormfly             : 24
+
+--- MOST USED BENCH 1 ---
+  #1  Freedom Hookfang     : 64
+  #2  Slick Nicker         : 21
+  #3  Crom Lech            : 14
+  #4  Sunsail Windshear    : 1
+
+--- MOST USED BENCH 2 ---
+  #1  Slick Nicker         : 29
+  #2  Crom Lech            : 28
+  #3  Sunsail Windshear    : 27
+  #4  Shattermaster        : 9
+  #5  Easter Barf & Belch  : 3
+  #6  Freedom Hookfang     : 2
+  #7  Meatlug              : 1
+  #8  Harvest Stormfly     : 1
+
+--- MOST USED BENCH 3 ---
+  #1  Easter Barf & Belch  : 35
+  #2  Shattermaster        : 20
+  #3  Crom Lech            : 12
+  #4  Sunsail Windshear    : 10
+  #5  Infamous Flameout    : 9
+  #6  Murmurquil           : 6
+  #7  Toothless            : 3
+  #8  Seezering Seetle     : 3
+  #9  Freedom Hookfang     : 1
+  #10 Meatlug              : 1
+
+--- MOST USED BENCH 4 ---
+  #1  Shattermaster        : 27
+  #2  Seezering Seetle     : 19
+  #3  Infamous Flameout    : 16
+  #4  Sunsail Windshear    : 14
+  #5  Murmurquil           : 13
+  #6  Crom Lech            : 6
+  #7  Slick Nicker         : 3
+  #8  Harvest Stormfly     : 2
+
+--- MOST USED BENCH 5 ---
+  #1  Crom Lech            : 19
+  #2  Seezering Seetle     : 17
+  #3  Meatlug              : 16
+  #4  Easter Barf & Belch  : 10
+  #5  Infamous Flameout    : 9
+  #6  Murmurquil           : 9
+  #7  Shattermaster        : 7
+  #8  Freedom Hookfang     : 6
+  #9  Slick Nicker         : 3
+  #10 Harvest Stormfly     : 3
+  #11 Sunsail Windshear    : 1
+
+--- MOST USED BENCH 6 ---
+  #1  Seezering Seetle     : 15
+  #2  Slick Nicker         : 13
+  #3  Harvest Stormfly     : 13
+  #4  Meatlug              : 12
+  #5  Infamous Flameout    : 11
+  #6  Murmurquil           : 9
+  #7  Easter Barf & Belch  : 8
+  #8  Shattermaster        : 7
+  #9  Sunsail Windshear    : 6
+  #10 Freedom Hookfang     : 5
+  #11 Crom Lech            : 1
+
+--- MOST USED BENCH 7 ---
+  #1  Harvest Stormfly     : 14
+  #2  Infamous Flameout    : 13
+  #3  Meatlug              : 12
+  #4  Murmurquil           : 11
+  #5  Seezering Seetle     : 10
+  #6  Sunsail Windshear    : 9
+  #7  Slick Nicker         : 8
+  #8  Easter Barf & Belch  : 7
+  #9  Crom Lech            : 7
+  #10 Shattermaster        : 6
+  #11 Freedom Hookfang     : 3

@@ -4,7 +4,7 @@ SPIRIT_SPEEDS = {
     "Very Fast": 8, "Fast": 9, "Moderate": 10, "Slow": 11, "Very Slow": 12
 }
 
-DEF_K = 1250.0  # Calibrated mitigation factor
+DEF_K = 1250.0
 
 def _mitigate(dmg, defense):
     return dmg * (1.0 / (1.0 + defense / DEF_K))
@@ -22,21 +22,25 @@ class Dragon:
         self.current_spirit = 0
         self.skill_id = skill_id
 
-        # Status Effects
         self.heal_blocked_turns = 0
         self.ability_locked_turns = 0
+        
         self.atk_buff_turns = 0
         self.atk_buff_mult = 1.0
         self.def_buff_turns = 0
+        self.def_buff_mult = 0.55
         self.counter_ratio = 0.0
         self.counter_turns = 0
         self.vulnerability_turns = 0
         self.vulnerability_mult = 1.0
+        
         self.shield_hp = 0
         self.crit_chance = 0.0
         self.crit_turns = 0
-        self.dot_damage_per_turn = 0
+        
         self.dot_turns = 0
+        self.dot_source = None
+        self.dot_pct = 0.0
 
     def is_alive(self):
         return self.current_hp > 0
@@ -44,12 +48,15 @@ class Dragon:
     def take_damage(self, amount, attacker=None):
         if not self.is_alive(): return
         dmg = amount
+        
         if self.vulnerability_turns > 0: dmg *= self.vulnerability_mult
-        if self.def_buff_turns > 0: dmg *= 0.55
+        if self.def_buff_turns > 0: dmg *= self.def_buff_mult
+            
         if self.shield_hp > 0:
             absorbed = min(self.shield_hp, dmg)
             self.shield_hp -= absorbed
             dmg -= absorbed
+            
         self.current_hp = max(0, self.current_hp - dmg)
         
         if attacker and attacker.is_alive() and self.counter_turns > 0:
@@ -66,9 +73,13 @@ class Dragon:
 
     def process_turn(self):
         if self.dot_turns > 0 and self.is_alive():
-            self.take_damage(self.dot_damage_per_turn)
+            if self.dot_source and self.dot_source.is_alive():
+                current_mult = self.dot_source.atk_buff_mult if self.dot_source.atk_buff_turns > 0 else 1.0
+                tick_dmg = _mitigate(self.dot_source.atk * self.dot_pct * current_mult, self.defense)
+                self.take_damage(tick_dmg)
+                
             self.dot_turns -= 1
-            if self.dot_turns == 0: self.dot_damage_per_turn = 0
+            if self.dot_turns == 0: self.dot_source = None
             
         if self.heal_blocked_turns > 0:   self.heal_blocked_turns -= 1
         if self.ability_locked_turns > 0: self.ability_locked_turns -= 1
@@ -84,23 +95,24 @@ class Dragon:
             self.crit_turns -= 1
             if self.crit_turns == 0: self.crit_chance = 0.0
 
+# DEFENSE DRAGONS GET +15% STATS
 DEFENSE_POOL = {
-    "Stormfly":              Dragon("Stormfly", "Blue", 583, 609, 2528, "Fast", "Stormfly"),
-    "Toothless":             Dragon("Toothless", "Purple", 585, 562, 2740, "Fast", "Toothless"),
-    "Shattermaster":         Dragon("Shattermaster", "Yellow", 570, 640, 2650, "Slow", "Shattermaster"),
-    "Murmurquil":            Dragon("Murmurquil", "Purple", 561, 614, 2730, "Fast", "Murmurquil"),
-    "Slick Nicker":          Dragon("Slick Nicker", "Red", 589, 535, 2818, "Very Fast", "Slick_Nicker"),
-    "Crom Lech":             Dragon("Crom Lech", "Green", 565, 610, 2710, "Slow", "Crom_Lech"),
-    "Sawmaw":                Dragon("Sawmaw", "Green", 580, 620, 2600, "Very Fast", "Sawmaw"),
-    "Seezering Seetle":      Dragon("The Searing Seethsizzle", "Red", 540, 606, 2760, "Very Fast", "Searing_Seethsizzle"),
-    "Radiant Skyglow":       Dragon("Radiant Skyglow", "Blue", 597, 537, 2622, "Slow", "Radiant_Skyglow"),
-    "Easter Barf & Belch":   Dragon("Easter Barf & Belch", "Blue", 610, 550, 2700, "Moderate", "Easter_Barf_Belch"),
-    "Infamous Flameout":     Dragon("Infamous Flameout", "Blue", 625, 515, 2656, "Very Fast", "Infamous_Flameout"),
-    "Harvest Stormfly":      Dragon("Harvest Stormfly", "Yellow", 618, 598, 2500, "Very Fast", "Harvest_Stormfly"),
-    "Maeve Heart":           Dragon("Maeve Heart", "Yellow", 550, 620, 2780, "Moderate", "Maeve_Heart"),
-    "Sunsail Windshear":     Dragon("Sunsail Windshear", "Green", 576, 606, 2878, "Slow", "Sunsail_Windshear"),
-    "Freedom Hookfang":      Dragon("Freedom Hookfang", "Yellow", 588, 563, 2800, "Moderate", "Freedom_Hookfang"),
-    "Meatlug":               Dragon("Meatlug", "Yellow", 520, 680, 2800, "Fast", "Meatlug"),
+    "Stormfly":              Dragon("Stormfly", "Blue", int(583*1.15), int(609*1.15), int(2528*1.15), "Fast", "Stormfly"),
+    "Toothless":             Dragon("Toothless", "Purple", int(585*1.15), int(562*1.15), int(2740*1.15), "Fast", "Toothless"),
+    "Shattermaster":         Dragon("Shattermaster", "Purple", int(618*1.15), int(692*1.15), int(2694*1.15), "Slow", "Shattermaster"),
+    "Murmurquil":            Dragon("Murmurquil", "Purple", int(560*1.15), int(613*1.15), int(2730*1.15), "Fast", "Murmurquil"),
+    "Slick Nicker":          Dragon("Slick Nicker", "Red", int(589*1.15), int(535*1.15), int(2818*1.15), "Very Fast", "Slick_Nicker"),
+    "Crom Lech":             Dragon("Crom Lech", "Yellow", int(544*1.15), int(585*1.15), int(2816*1.15), "Fast", "Crom_Lech"),
+    "Sawmaw":                Dragon("Sawmaw", "Green", int(560*1.15), int(602*1.15), int(2568*1.15), "Very Fast", "Sawmaw"),
+    "Seezering Seetle":      Dragon("Searing Seethsizzle", "Red", int(540*1.15), int(606*1.15), int(2760*1.15), "Very Fast", "Searing_Seethsizzle"),
+    "Radiant Skyglow":       Dragon("Radiant Skyglow", "Blue", int(596*1.15), int(536*1.15), int(2622*1.15), "Slow", "Radiant_Skyglow"),
+    "Infamous Flameout":     Dragon("Infamous Flameout", "Blue", int(625*1.15), int(515*1.15), int(2656*1.15), "Very Fast", "Infamous_Flameout"),
+    "Harvest Stormfly":      Dragon("Harvest Stormfly", "Yellow", int(618*1.15), int(598*1.15), int(2500*1.15), "Very Fast", "Harvest_Stormfly"),
+    "Maeve Heart":           Dragon("Maeve Heart", "Blue", int(573*1.15), int(566*1.15), int(3470*1.15), "Moderate", "Maeve_Heart"),
+    "Sunsail Windshear":     Dragon("Sunsail Windshear", "Green", int(576*1.15), int(606*1.15), int(2878*1.15), "Slow", "Sunsail_Windshear"),
+    "Meatlug":               Dragon("Meatlug", "Yellow", int(554*1.15), int(611*1.15), int(2690*1.15), "Fast", "Meatlug"),
+    "Easter Barf & Belch":   Dragon("Easter Barf & Belch", "Blue", int(585*1.15), int(580*1.15), int(2940*1.15), "Moderate", "Easter_Barf_Belch"),
+    "Freedom Hookfang":      Dragon("Freedom Hookfang", "Yellow", int(588*1.15), int(563*1.15), int(2800*1.15), "Moderate", "Freedom_Hookfang"),
 }
 
 def get_offense_team():
@@ -109,7 +121,7 @@ def get_offense_team():
         Dragon("Fearsome Flamellion", "Red", 596, 555, 2622, "Slow", "Fearsome_Flamellion"),
         Dragon("Thanksgiving Meatlug", "Yellow", 567, 555, 2562, "Moderate", "Thanksgiving_Meatlug"),
         Dragon("Valiant Vingthor", "Green", 526, 552, 2956, "Moderate", "Valiant_Vingthor"),
-        Dragon("Shattermaster", "Purple", 570, 640, 2650, "Slow", "Shattermaster"),
+        Dragon("Shattermaster", "Purple", 618, 692, 2694, "Slow", "Shattermaster"),
     ]
 
 def cast_skill(caster, allies_mgr, enemies_mgr):
@@ -125,107 +137,198 @@ def cast_skill(caster, allies_mgr, enemies_mgr):
     def raw(pct, tgt):
         return _mitigate(caster.atk * pct * atk_mult, tgt.defense)
 
-    if caster.skill_id == "Radiant_Skyglow":
-        for a in allies:
-            a.def_buff_turns = 4
-            if a != caster:
-                a.gain_spirit(a.spirit_req * 0.25); a.counter_ratio = 2.05; a.counter_turns = 4
-    elif caster.skill_id == "Toothless":
-        target.take_damage(raw(1.90, target), caster)
-        others = [e for e in enemies if e != target]
-        if others: o = random.choice(others); o.take_damage(raw(1.90, o), caster)
-        for e in enemies: e.current_spirit = max(0, e.current_spirit - (e.spirit_req * 0.30))
-        for a in allies:
-            if a != caster: a.gain_spirit(a.spirit_req * 0.25)
-    elif caster.skill_id == "Stormfly":
+    if caster.skill_id == "Stormfly":
         for e in enemies:
-            e.dot_damage_per_turn = _mitigate(caster.atk * (1.70 / 4) * atk_mult, e.defense)
-            e.dot_turns = 4; e.vulnerability_turns = 5; e.vulnerability_mult = 1.40
+            e.dot_turns = 4
+            e.dot_source = caster
+            e.dot_pct = 1.70 / 4
+            e.vulnerability_turns = 5
+            e.vulnerability_mult = 1.40
         weakest = min(allies, key=lambda x: x.current_hp)
-        bonus = weakest.max_hp * 0.30; weakest.max_hp += bonus; weakest.current_hp += bonus
+        bonus = weakest.max_hp * 0.30
+        weakest.max_hp += bonus
+        weakest.current_hp += bonus
+        for a in allies:
+            a.atk_buff_turns = 5
+            a.atk_buff_mult = 1.35
+            
     elif caster.skill_id == "Murmurquil":
         total = 0
         for e in enemies:
-            d = raw(1.74, e); e.take_damage(d, caster); total += d; e.heal_blocked_turns = 5
+            d = raw(1.74, e)
+            e.take_damage(d, caster)
+            total += d
+            e.heal_blocked_turns = 5
         caster.heal(total * 0.15)
-        for a in allies: a.atk_buff_turns = 5; a.atk_buff_mult = 1.35
+        for a in allies: 
+            a.atk_buff_turns = 5
+            a.atk_buff_mult = 1.35
+
     elif caster.skill_id == "Sawmaw":
         total = 0
         for e in enemies:
-            d = raw(1.64, e); e.take_damage(d, caster); total += d
+            d = raw(1.64, e)
+            e.take_damage(d, caster)
+            total += d
             e.current_spirit = max(0, e.current_spirit - (e.spirit_req * 0.30))
         caster.heal(total * 0.10)
-        for a in allies: a.atk_buff_turns = max(a.atk_buff_turns, 4); a.atk_buff_mult = max(a.atk_buff_mult, 1.25)
+        for a in allies: 
+            a.atk_buff_turns = max(a.atk_buff_turns, 4)
+            a.atk_buff_mult = 1.25
+
+    elif caster.skill_id == "Toothless":
+        target.take_damage(raw(1.90, target), caster)
+        others = [e for e in enemies if e != target]
+        if others: 
+            o = random.choice(others)
+            o.take_damage(raw(1.90, o), caster)
+        for e in enemies: 
+            e.current_spirit = max(0, e.current_spirit - (e.spirit_req * 0.30))
+        for a in allies:
+            if a != caster: a.gain_spirit(a.spirit_req * 0.25)
+            
     elif caster.skill_id == "Shattermaster":
         for e in enemies: e.ability_locked_turns = 5
         for a in allies:
-            a.atk_buff_turns = max(a.atk_buff_turns, 3); a.atk_buff_mult = max(a.atk_buff_mult, 1.25)
+            a.atk_buff_turns = max(a.atk_buff_turns, 3)
+            a.atk_buff_mult = 1.25
             if a != caster: a.gain_spirit(a.spirit_req * 0.33)
-    elif caster.skill_id == "Easter_Barf_Belch":
-        for e in enemies:
-            e.dot_damage_per_turn = _mitigate(caster.atk * (3.20 / 4) * atk_mult, e.defense); e.dot_turns = 4
-        for a in allies: a.atk_buff_turns = max(a.atk_buff_turns, 3); a.atk_buff_mult = max(a.atk_buff_mult, 1.25)
+            
     elif caster.skill_id == "Meatlug":
         for e in enemies:
-            e.take_damage(raw(1.55, e), caster); e.atk_buff_turns = 5; e.atk_buff_mult = 0.75
-        weakest = min(allies, key=lambda x: x.current_hp); weakest.gain_spirit(weakest.spirit_req * 0.60)
+            e.take_damage(raw(1.55, e), caster)
+            e.atk_buff_turns = 5
+            e.atk_buff_mult = 0.75
+        weakest = min(allies, key=lambda x: x.current_hp)
+        weakest.gain_spirit(weakest.spirit_req * 0.60)
+        
     elif caster.skill_id == "Thanksgiving_Meatlug":
         for _ in range(5):
-            if enemies: t = random.choice(enemies); t.take_damage(raw(0.80, t), caster)
+            if enemies: 
+                t = random.choice(enemies)
+                t.take_damage(raw(0.80, t), caster)
         for a in allies:
-            bonus = a.max_hp * 0.32; a.max_hp += bonus; a.current_hp += bonus
-            a.crit_chance = 0.40; a.crit_turns = 5
+            bonus = a.max_hp * 0.32
+            a.max_hp += bonus
+            a.current_hp += bonus
+            a.crit_chance = 0.40
+            a.crit_turns = 5
+            
     elif caster.skill_id == "Infamous_Flameout":
-        target.take_damage(raw(3.00, target), caster); caster.take_damage(caster.atk * 1.95)
+        target.take_damage(raw(3.00, target), caster)
+        caster.take_damage(caster.atk * 1.95)
         for a in allies:
             if a != caster: a.heal(a.max_hp * 0.33)
+            
     elif caster.skill_id == "Slick_Nicker":
         target.take_damage(raw(1.70, target), caster)
         others = [e for e in enemies if e != target]
-        if others: o = random.choice(others); o.take_damage(raw(1.70, o), caster)
-        target.def_buff_turns = 0; target.atk_buff_turns = 0; target.counter_turns = 0; target.atk_buff_mult = 1.0
-        caster.counter_ratio = 2.35; caster.counter_turns = 5
+        if others: 
+            o = random.choice(others)
+            o.take_damage(raw(1.70, o), caster)
+        target.def_buff_turns = 0
+        target.atk_buff_turns = 0
+        target.counter_turns = 0
+        target.atk_buff_mult = 1.0
+        caster.counter_ratio = 2.35
+        caster.counter_turns = 5
+        
     elif caster.skill_id == "Searing_Seethsizzle":
         target.take_damage(raw(2.50, target), caster)
-        caster.atk_buff_turns = 4; caster.atk_buff_mult = 1.32
+        caster.atk_buff_turns = 4
+        caster.atk_buff_mult = 1.32
         caster.gain_spirit(caster.spirit_req * 0.25)
+        
     elif caster.skill_id == "Harvest_Stormfly":
-        target.dot_damage_per_turn = _mitigate(caster.atk * (2.10 / 5) * atk_mult, target.defense)
-        target.dot_turns = 5; target.heal_blocked_turns = 5
+        target.dot_turns = 5
+        target.dot_source = caster
+        target.dot_pct = 2.10 / 5
+        target.heal_blocked_turns = 5
         for a in allies:
             if a != caster: a.gain_spirit(a.spirit_req * 0.25)
+            
     elif caster.skill_id == "Maeve_Heart":
         for e in enemies:
-            e.dot_damage_per_turn = _mitigate(caster.atk * (1.60 / 4) * atk_mult, e.defense)
-            e.dot_turns = 4; e.vulnerability_turns = 4; e.vulnerability_mult = 1.30
-            e.atk_buff_turns = max(e.atk_buff_turns, 4); e.atk_buff_mult = min(e.atk_buff_mult, 0.62)
+            e.dot_turns = 4
+            e.dot_source = caster
+            e.dot_pct = 1.60 / 4
+            e.vulnerability_turns = 4
+            e.vulnerability_mult = 1.30
+            e.atk_buff_turns = 4
+            e.atk_buff_mult = 0.62
+            
     elif caster.skill_id == "Sunsail_Windshear":
         total = 0
         for e in enemies:
-            d = raw(1.79, e); e.take_damage(d, caster); total += d
+            d = raw(1.79, e)
+            e.take_damage(d, caster)
+            total += d
         caster.heal(total * 0.05)
         for a in allies:
             if a != caster:
-                bonus = a.max_hp * 0.30; a.max_hp += bonus; a.current_hp += bonus
-                a.atk_buff_turns = max(a.atk_buff_turns, 5); a.atk_buff_mult = max(a.atk_buff_mult, 1.45)
-    elif caster.skill_id == "Freedom_Hookfang":
-        for _ in range(10):
-            if enemies: t = random.choice(enemies); t.take_damage(raw(0.95, t), caster)
-        for a in allies:
-            a.gain_spirit(a.spirit_req * 0.15); a.atk_buff_turns = max(a.atk_buff_turns, 4); a.atk_buff_mult = max(a.atk_buff_mult, 1.40)
+                bonus = a.max_hp * 0.30
+                a.max_hp += bonus
+                a.current_hp += bonus
+                a.atk_buff_turns = 5
+                a.atk_buff_mult = 1.45
+
     elif caster.skill_id == "Crom_Lech":
-        target.take_damage(raw(1.70, target), caster)
+        target.take_damage(raw(1.75, target), caster)
         others = [e for e in enemies if e != target]
-        if others: o = random.choice(others); o.take_damage(raw(1.70, o), caster)
-        for a in allies: a.shield_hp += a.max_hp * 0.30
+        if others: 
+            o = random.choice(others)
+            o.take_damage(raw(1.75, o), caster)
+        for a in allies:
+            bonus = a.max_hp * 0.30
+            a.max_hp += bonus
+            a.current_hp += bonus
+            a.crit_chance = 0.50
+            a.crit_turns = 4
+            
     elif caster.skill_id == "Fearsome_Flamellion":
         for e in enemies:
-            e.dot_damage_per_turn = _mitigate(caster.atk * (1.80 / 3) * atk_mult, e.defense)
-            e.dot_turns = 3; e.ability_locked_turns = 3
-        for a in allies: a.atk_buff_turns = max(a.atk_buff_turns, 3); a.atk_buff_mult = max(a.atk_buff_mult, 1.30)
+            e.dot_turns = 3
+            e.dot_source = caster
+            e.dot_pct = 1.80 / 3
+            e.ability_locked_turns = 3
+        for a in allies: 
+            a.atk_buff_turns = 3
+            a.atk_buff_mult = 1.30
+            
     elif caster.skill_id == "Valiant_Vingthor":
         for _ in range(3):
-            if enemies: t = random.choice(enemies); t.take_damage(raw(1.20, t), caster)
+            if enemies: 
+                t = random.choice(enemies)
+                t.take_damage(raw(1.20, t), caster)
         for a in allies:
-            a.crit_chance = max(a.crit_chance, 0.40); a.crit_turns = 5
+            a.crit_chance = 0.40
+            a.crit_turns = 5
             if a != caster: a.gain_spirit(a.spirit_req * 0.20)
+            
+    elif caster.skill_id == "Radiant_Skyglow":
+        for a in allies:
+            a.def_buff_turns = 4
+            a.def_buff_mult = 0.55
+            if a != caster:
+                a.gain_spirit(a.spirit_req * 0.25)
+                a.counter_ratio = 2.05
+                a.counter_turns = 4
+
+    elif caster.skill_id == "Easter_Barf_Belch":
+        for e in enemies:
+            e.dot_turns = 4
+            e.dot_source = caster
+            e.dot_pct = 3.20 / 4
+        for a in allies:
+            a.atk_buff_turns = max(a.atk_buff_turns, 3)
+            a.atk_buff_mult = max(a.atk_buff_mult, 1.25)
+
+    elif caster.skill_id == "Freedom_Hookfang":
+        for _ in range(10):
+            if enemies:
+                t = random.choice(enemies)
+                t.take_damage(raw(0.95, t), caster)
+        for a in allies:
+            a.gain_spirit(a.spirit_req * 0.15)
+            a.atk_buff_turns = max(a.atk_buff_turns, 4)
+            a.atk_buff_mult = max(a.atk_buff_mult, 1.40)
